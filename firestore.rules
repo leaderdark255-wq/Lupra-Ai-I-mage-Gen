@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // -------------------------------------------------------------------------
+    // HELPERS
+    // -------------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // -------------------------------------------------------------------------
+    // ENTITY VALIDATIONS
+    // -------------------------------------------------------------------------
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'email', 'isPremium', 'dailyCount']) &&
+             data.userId == request.auth.uid &&
+             data.email is string &&
+             data.isPremium is bool &&
+             data.dailyCount is int &&
+             (data.createdAt == request.time || data.createdAt == existing().createdAt);
+    }
+
+    function isValidThread(data) {
+      return data.keys().hasAll(['userId', 'title', 'createdAt', 'updatedAt']) &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() <= 200 &&
+             data.createdAt == request.time &&
+             data.updatedAt == request.time;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['userId', 'role', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.role in ['user', 'assistant'] &&
+             data.createdAt == request.time;
+    }
+
+    // -------------------------------------------------------------------------
+    // DEFAULT DENY
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // COLLECTIONS
+    // -------------------------------------------------------------------------
+
+    match /admins/{userId} {
+      allow read: if isSignedIn();
+      // Allow bootstrap for the primary user
+      allow create: if isSignedIn() && request.auth.token.email == 'leaderdark255@gmail.com';
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().dailyCount == 0;
+      allow update: if isOwner(userId) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['photoURL', 'displayName', 'updatedAt', 'isPremium', 'customApiKey'])
+      ) || isAdmin();
+    }
+
+    match /threads/{threadId} {
+      allow get: if isOwner(existing().userId) || isAdmin();
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidThread(incoming());
+      allow update: if isOwner(existing().userId) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'updatedAt'])
+      ) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && (isOwner(existing().userId) || isOwner(get(/databases/$(database)/documents/threads/$(threadId)).data.userId) || isAdmin());
+        allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+        allow create: if isSignedIn() && isOwner(incoming().userId) && isValidMessage(incoming());
+        allow update: if isSignedIn() && isOwner(existing().userId) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'imageURL', 'steps', 'text', 'metadata', 'isFavorite'])
+        ) || isAdmin();
+        allow delete: if isSignedIn() && (isOwner(existing().userId) || isOwner(get(/databases/$(database)/documents/threads/$(threadId)).data.userId) || isAdmin());
+      }
+    }
+
+    match /generations/{genId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isOwner(existing().userId) || isAdmin();
+      allow create: if isSignedIn() && isValidMessage(incoming());
+      allow update: if isSignedIn() && isOwner(existing().userId) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['isFavorite'])
+      ) || isAdmin();
+      allow delete: if isOwner(existing().userId) || isAdmin();
+    }
+  }
+}

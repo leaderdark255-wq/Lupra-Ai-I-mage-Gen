@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stored user information including subscription status.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "isPremium": { "type": "boolean" },
+        "dailyCount": { "type": "integer" },
+        "customApiKey": { "type": "string" },
+        "lastResetAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "isPremium", "dailyCount"]
+    },
+    "ChatThread": {
+      "title": "Chat Thread",
+      "description": "Groups of messages forming a generation session.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "An individual message in a chat, containing prompts or images.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "text": { "type": "string" },
+        "imageURL": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "enhancing", "generating", "ready", "failed"] },
+        "isFavorite": { "type": "boolean" },
+        "baseImage": { "type": "string" },
+        "steps": { "type": "array", "items": { "type": "string" } },
+        "metadata": { 
+          "type": "object",
+          "properties": {
+            "prompt": { "type": "string" },
+            "enhancedPrompt": { "type": "string" },
+            "resolution": { "type": "string" },
+            "filter": { "type": "string" },
+            "model": { "type": "string" },
+            "createdAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile document."
+    },
+    "/threads/{threadId}": {
+      "schema": "ChatThread",
+      "description": "Main thread container."
+    },
+    "/threads/{threadId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages within a thread."
+    },
+    "/generations/{genId}": {
+      "schema": "Message",
+      "description": "Global history of generations for a user."
+    }
+  }
+}
